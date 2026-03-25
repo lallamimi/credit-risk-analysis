@@ -9,12 +9,12 @@
 
 ## Tech Stack
 
-* Python
-* Pandas, NumPy
-* Scikit-learn
-* XGBoost, LightGBM
-* Matplotlib
-* React (Frontend)
+- Python  
+- Pandas, NumPy  
+- Scikit-learn  
+- XGBoost, LightGBM  
+- Matplotlib  
+- React (Frontend)  
 
 ---
 
@@ -22,36 +22,40 @@
 
 This project focuses on predicting the probability of loan default using machine learning techniques.
 
-Unlike standard ML projects, it introduces a **business perspective** by estimating:
+Unlike standard ML projects, it introduces a business perspective by estimating:
 
-> **Expected Loss (EL) = PD × LGD × EAD**
+> Expected Loss (EL) = PD × LGD × EAD
 
-This allows transforming predictions into **real financial risk**, which is essential in banking and fintech.
+- PD (Probability of Default): predicted by the model  
+- LGD (Loss Given Default): proportion of loss if default occurs  
+- EAD (Exposure at Default): total loan exposure  
+
+This approach allows translating model predictions into real financial risk, which is essential in banking and fintech.
 
 ---
 
 ## Objectives
 
-* Predict loan default risk
-* Handle imbalanced datasets
-* Build a complete ML pipeline
-* Compare multiple models
-* Translate predictions into business insights
+- Predict loan default risk  
+- Handle imbalanced datasets  
+- Build a complete machine learning pipeline  
+- Compare multiple models  
+- Translate predictions into business insights  
 
 ---
 
 ## Dataset
 
-* Credit Risk Dataset
-* ~32,000+ observations
-* Target: `loan_status`
+- Credit Risk Dataset  
+- Approximately 32,000 observations  
+- Target variable: `loan_status`  
 
-### Key features:
+### Key features
 
-* Age, income
-* Employment length
-* Loan amount & interest rate
-* Credit history
+- Age, income  
+- Employment length  
+- Loan amount and interest rate  
+- Credit history  
 
 ---
 
@@ -59,88 +63,100 @@ This allows transforming predictions into **real financial risk**, which is esse
 
 ### Data Preprocessing
 
-* Missing values handling
-* One-Hot Encoding
-* Feature scaling
+- Handling missing values  
+- Encoding categorical variables (One-Hot Encoding)  
+- Feature scaling  
 
 ### Feature Engineering
 
-* Financial ratios (loan-to-income, etc.)
-* Derived predictive features
+- Financial ratios (e.g. loan-to-income)  
+- Derived predictive features  
 
 ### Models Implemented
 
-* Logistic Regression
-* Decision Tree
-* Random Forest
-* Gradient Boosting
-* AdaBoost / Bagging
-* XGBoost
-* LightGBM
+- Logistic Regression  
+- Decision Tree  
+- Random Forest  
+- Gradient Boosting  
+- AdaBoost / Bagging  
+- XGBoost  
+- LightGBM  
 
 ---
 
 ## Model Evaluation
 
-Due to class imbalance:
+Due to class imbalance, F1-score is used as the main evaluation metric.
 
-**F1-score is the main metric**
+Additional metrics:
+- Accuracy  
+- Precision  
+- Recall  
+- Confusion Matrix  
 
-Other metrics:
+Special attention is given to recall in order to minimize financial risk.
 
-* Accuracy
-* Precision / Recall
-* Confusion Matrix
-
-Special focus on **recall** to minimize financial risk.
+Example result:
+- F1-score: ~0.78 (Random Forest)
 
 ---
 
 ## Business Impact
 
-This project connects machine learning with real-world finance:
+This project connects machine learning with real-world financial decision-making:
 
-* Identify high-risk borrowers
-* Estimate potential financial losses
-* Support credit decision systems
+- Identify high-risk borrowers  
+- Estimate potential financial losses  
+- Support credit approval decisions  
 
-Moves from **prediction → decision-making**
+It shifts the focus from prediction to decision support.
 
 ---
 
 ## Frontend Dashboard
 
-A React-based UI (`credit-ui/`) allows:
+A React-based interface (`credit-ui/`) provides:
 
-* Data visualization
-* Interactive exploration
-* Understanding model outputs
+- Data visualization  
+- Interactive exploration  
+- Insight into model behavior  
 
 ---
 
-##  How to Run
+## Quick Start
 
-### 1. Install dependencies
-
-```bash id="9r5i1d"
+```bash
+git clone https://github.com/your-username/credit-risk-analysis.git
+cd credit-risk-analysis
 pip install -r requirements.txt
-```
-
-### 2. Train models
-
-```bash id="v6h3qj"
-python train_randomforest.py
-```
-
-### 3. Run project
-
-```bash id="4o6lq6"
 python main.py
 ```
 
-### 4. Launch frontend
+---
 
-```bash id="x3q6k2"
+## How to Run
+
+### 1. Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 2. Train a model
+
+```bash
+python train_randomforest.py
+```
+
+### 3. Run the main script
+
+```bash
+python main.py
+```
+
+### 4. Launch the frontend
+
+```bash
 cd credit-ui
 npm install
 npm start
@@ -150,26 +166,26 @@ npm start
 
 ## Key Highlights
 
-End-to-end ML pipeline
-Multiple models comparison
-Imbalanced data handling
-Business-driven metrics (Expected Loss)
-Full stack (ML + Frontend)
+- End-to-end machine learning pipeline  
+- Comparison of multiple models  
+- Handling of imbalanced data  
+- Integration of business metrics (Expected Loss)  
+- Combination of backend (Python) and frontend (React)  
 
 ---
 
 ## Future Improvements
 
-* SHAP (model explainability)
-* Hyperparameter tuning
-* API deployment (FastAPI)
-* Real-time predictions
+- Model interpretability (SHAP)  
+- Hyperparameter tuning  
+- API deployment (FastAPI or Flask)  
+- Real-time prediction system  
 
 ---
 
 ## Author
 
-**Oumayma Mektane**
+Oumayma Mektane   
 
 ---
 
