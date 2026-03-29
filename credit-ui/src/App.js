@@ -5,24 +5,22 @@ import "./App.css";
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-const RISK_LABELS = { high: "Élevé", medium: "Moyen", low: "Faible", unknown: "—" };
+const RISK_LABELS = { high: "High", medium: "Medium", low: "Low", unknown: "—" };
 const RISK_COLORS = { high: "#ef4444", medium: "#f97316", low: "#22c55e", unknown: "#888" };
 
 const MODEL_LABELS = {
-  logistic:      "Rég. Log.",
-  xgboost:       "XGBoost",
-  randomforest:  "Rand. Forest",
-  gradientboost: "Grad. Boost",
-  lightgbm:      "LightGBM",
-  decisiontree:  "Dec. Tree",
-  adaboost:      "AdaBoost",
-  extratrees:    "Extra Trees",
-  bagging:       "Bagging",
+  xgboost: "XGBoost",
+  randomforest: "Random Forest",
+  lightgbm: "LightGBM",
 };
-const MODEL_KEYS = [
-  "logistic", "xgboost", "randomforest", "gradientboost",
-  "lightgbm", "decisiontree", "adaboost", "extratrees", "bagging",
-];
+const MODEL_KEYS = ["xgboost", "randomforest", "lightgbm"];
+
+const SORT_LABELS = {
+  final: "Final risk",
+  xgboost: "XGBoost score",
+  randomforest: "Random Forest score",
+  lightgbm: "LightGBM score",
+};
 
 function RiskBadge({ risk }) {
   return (
@@ -34,8 +32,8 @@ function RiskBadge({ risk }) {
 
 function MiniBar({ score, risk }) {
   const segments = 20;
-  const filled   = Math.round((score / 100) * segments);
-  const color    = RISK_COLORS[risk];
+  const filled = Math.round((score / 100) * segments);
+  const color = RISK_COLORS[risk];
   return (
     <div className="mini-bar-wrap" title={`${score}%`}>
       {Array.from({ length: segments }).map((_, i) => (
@@ -43,10 +41,8 @@ function MiniBar({ score, risk }) {
           key={i}
           className="mini-bar-seg"
           style={{
-            background: i < filled
-              ? color
-              : undefined,
-            opacity: i < filled ? (0.55 + (i / segments) * 0.45) : undefined,
+            background: i < filled ? color : undefined,
+            opacity: i < filled ? 0.55 + (i / segments) * 0.45 : undefined,
           }}
         />
       ))}
@@ -55,70 +51,108 @@ function MiniBar({ score, risk }) {
 }
 
 // ---------------------------------------------------------------------------
-// SHAP Modal  — fetches on open, caches result
+// SHAP Modal
 // ---------------------------------------------------------------------------
 function ShapModal({ client, modelKey, onClose }) {
-  const [shap,    setShap]    = useState(null);   // null = loading
-  const [error,   setError]   = useState(null);
-  const isFallback = modelKey === "adaboost" || modelKey === "bagging";
+  const [shap, setShap] = useState(null);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
-    setShap(null);
-    setError(null);
-    axios.get(`http://localhost:8000/shap/${client.client_id}/${modelKey}`)
-      .then(r => { if (!cancelled) setShap(r.data.shap ?? []); })
-      .catch(() => { if (!cancelled) setError("Erreur lors du chargement."); });
-    return () => { cancelled = true; };
+
+    async function loadShap() {
+      try {
+        setShap(null);
+        setError(null);
+
+        const res = await axios.get(
+          `http://127.0.0.1:8000/shap/${client.client_id}/${modelKey}`
+        );
+
+        if (!cancelled) {
+          const rows = Array.isArray(res.data?.shap) ? res.data.shap : [];
+          setShap(rows);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          const msg =
+            err?.response?.data?.detail ||
+            err?.response?.data?.error ||
+            "Error while loading SHAP explanations.";
+          setError(msg);
+        }
+      }
+    }
+
+    loadShap();
+
+    return () => {
+      cancelled = true;
+    };
   }, [client.client_id, modelKey]);
 
-  const maxAbs = shap ? Math.max(...shap.map((s) => Math.abs(s.shap_value)), 0.001) : 1;
+  const maxAbs =
+    shap && shap.length > 0
+      ? Math.max(...shap.map((s) => Math.abs(Number(s.shap_value) || 0)))
+      : 1;
 
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-box shap-box" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <div>
-            <h2>Explications SHAP</h2>
+            <h2>SHAP Explanations</h2>
             <p className="modal-sub">
               {MODEL_LABELS[modelKey]} — Client #{client.client_id}
-              {isFallback && <span className="modal-sub-note"> · importances de variables</span>}
             </p>
           </div>
-          <button className="modal-close" onClick={onClose}>✕</button>
+
+          <button className="modal-close" onClick={onClose}>
+            ×
+          </button>
         </div>
 
         {error ? (
           <p className="shap-empty">{error}</p>
         ) : shap === null ? (
-          <p className="shap-loading">Chargement des explications…</p>
+          <p className="shap-loading">Loading explanations…</p>
         ) : shap.length === 0 ? (
-          <p className="shap-empty">Aucune donnée disponible pour ce client.</p>
+          <p className="shap-empty">No SHAP data available.</p>
         ) : (
           <>
             <div className="shap-list">
               {shap.map((item, i) => {
-                const pct = (Math.abs(item.shap_value) / maxAbs) * 100;
-                const pos = item.shap_value >= 0;
+                const value = Number(item.shap_value) || 0;
+                const pct = maxAbs > 0 ? (Math.abs(value) / maxAbs) * 100 : 0;
+                const isPositive = value >= 0;
+
                 return (
                   <div key={i} className="shap-row">
-                    <div className="shap-feature" title={item.feature}>{item.feature}</div>
+                    <div className="shap-feature" title={item.feature}>
+                      {item.feature}
+                    </div>
+
                     <div className="shap-bar-track">
                       <div
-                        className={`shap-bar-fill ${pos ? "shap-pos" : "shap-neg"}`}
+                        className={`shap-bar-fill ${isPositive ? "shap-pos" : "shap-neg"}`}
                         style={{ width: `${pct}%` }}
                       />
                     </div>
-                    <div className={`shap-val ${pos ? "shap-val-pos" : "shap-val-neg"}`}>
-                      {pos ? "+" : ""}{item.shap_value.toFixed(3)}
+
+                    <div
+                      className={`shap-val ${isPositive ? "shap-val-pos" : "shap-val-neg"}`}
+                    >
+                      {isPositive ? "+" : ""}
+                      {value.toFixed(3)}
                     </div>
                   </div>
                 );
               })}
             </div>
+
             <p className="shap-legend">
-              <span className="shap-pos-dot" /> Augmente le risque &nbsp;|&nbsp;
-              <span className="shap-neg-dot" /> Réduit le risque
+              <span className="shap-pos-dot" /> Increases risk &nbsp;|&nbsp;
+              <span className="shap-neg-dot" /> Reduces risk
             </p>
           </>
         )}
@@ -136,35 +170,32 @@ function DetailsModal({ client, onClose, onOpenShap }) {
       <div className="modal-box details-box" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <div>
-            <h2>Détails — Client #{client.client_id}</h2>
-            <p className="modal-sub">Analyse multi-modèles</p>
+            <h2>Details — Client #{client.client_id}</h2>
+            <p className="modal-sub">Multi-model analysis</p>
           </div>
-          <button className="modal-close" onClick={onClose}>✕</button>
+          <button className="modal-close" onClick={onClose}>
+            ×
+          </button>
         </div>
 
-        {/* Final risk */}
         <div className="detail-final">
-          <span className="detail-final-label">Décision finale :</span>
+          <span className="detail-final-label">Final decision:</span>
           <RiskBadge risk={client.final_risk} />
           {client.avg_score != null && (
             <span className="detail-avg-score">
-              Score moyen : <strong style={{ color: RISK_COLORS[client.final_risk] }}>
-                {client.avg_score}%
-              </strong>
-              &nbsp;sur {Object.values(client.models).filter(m => m.score != null).length} modèles
+              Average score:{" "}
+              <strong style={{ color: RISK_COLORS[client.final_risk] }}>{client.avg_score}%</strong>
+              &nbsp;across {Object.values(client.models).filter((m) => m.score != null).length} models
             </span>
           )}
         </div>
 
-        {/* Per-model blocks */}
         <div className="detail-models">
           {MODEL_KEYS.map((key) => {
             const m = client.models[key];
             if (!m || m.score === null) return null;
             return (
               <div key={key} className="detail-model-block">
-
-                {/* Score row */}
                 <div className="detail-model-row">
                   <div className="detail-model-name">{MODEL_LABELS[key]}</div>
                   <div className="detail-model-score" style={{ color: RISK_COLORS[m.risk] }}>
@@ -175,52 +206,56 @@ function DetailsModal({ client, onClose, onOpenShap }) {
                   <button
                     className="btn-expl"
                     onClick={() => onOpenShap(key)}
-                    title={`Voir les valeurs SHAP pour ${MODEL_LABELS[key]}`}
+                    title={`View SHAP values for ${MODEL_LABELS[key]}`}
                   >
-                    📊 Voir explication
+                    📊 View explanation
                   </button>
                 </div>
 
-                {/* Factors grid */}
-                {(m.facteurs_risque?.length > 0 || m.facteurs_protecteurs?.length > 0) && (
+                {(m.risk_factors?.length > 0 || m.protective_factors?.length > 0) && (
                   <div className="detail-factors-grid">
-                    {m.facteurs_risque?.length > 0 && (
+                    {m.risk_factors?.length > 0 && (
                       <div className="detail-factors-col">
-                        <div className="factors-title risk-title">⚠️ Facteurs de risque</div>
+                        <div className="factors-title risk-title">Risk factors</div>
                         <ul>
-                          {m.facteurs_risque.map((f, i) => <li key={i}>{f}</li>)}
+                          {m.risk_factors.map((f, i) => (
+                            <li key={i}>{f}</li>
+                          ))}
                         </ul>
                       </div>
                     )}
-                    {m.facteurs_protecteurs?.length > 0 && (
+                    {m.protective_factors?.length > 0 && (
                       <div className="detail-factors-col">
-                        <div className="factors-title protect-title">✅ Facteurs protecteurs</div>
+                        <div className="factors-title protect-title">Protective factors</div>
                         <ul>
-                          {m.facteurs_protecteurs.map((f, i) => <li key={i}>{f}</li>)}
+                          {m.protective_factors.map((f, i) => (
+                            <li key={i}>{f}</li>
+                          ))}
                         </ul>
                       </div>
                     )}
                   </div>
                 )}
 
-                {/* Recommendations */}
-                {m.recommandations?.length > 0 && (
+                {m.recommendations?.length > 0 && (
                   <div className="detail-model-reco">
-                    <div className="detail-reco-title">💡 Pour améliorer les chances d'approbation</div>
+                    <div className="detail-reco-title">
+                      Suggestions to improve approval chances
+                    </div>
                     <ul>
-                      {m.recommandations.map((r, i) => <li key={i}>{r}</li>)}
+                      {m.recommendations.map((r, i) => (
+                        <li key={i}>{r}</li>
+                      ))}
                     </ul>
                   </div>
                 )}
-
               </div>
             );
           })}
         </div>
 
-        {/* Bar chart */}
         <div className="detail-chart">
-          <div className="chart-title">Comparaison des modèles</div>
+          <div className="chart-title">Model comparison</div>
           <div className="chart-columns">
             {MODEL_KEYS.map((key) => {
               const m = client.models[key];
@@ -249,22 +284,21 @@ function DetailsModal({ client, onClose, onOpenShap }) {
 // Main App
 // ---------------------------------------------------------------------------
 function App() {
-  const [clientId,   setClientId]   = useState("");
-  const [loading,    setLoading]    = useState(false);
-  const [error,      setError]      = useState(null);
+  const [clientId, setClientId] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
-  const [data,       setData]       = useState(null);
+  const [data, setData] = useState(null);
+  const [clients, setClients] = useState([]);
 
-  const [clients,    setClients]    = useState([]);
-
-  const [selected,   setSelected]   = useState(null);
-  const [shapModel,  setShapModel]  = useState(null);
+  const [selected, setSelected] = useState(null);
+  const [shapModel, setShapModel] = useState(null);
 
   const [filterRisk, setFilterRisk] = useState("all");
-  const [sortBy,     setSortBy]     = useState("final");
-  const [searchQ,    setSearchQ]    = useState("");
+  const [filterModel, setFilterModel] = useState("all");
+  const [sortBy, setSortBy] = useState("final");
+  const [searchQ, setSearchQ] = useState("");
 
-  // -------------------------------------------------------------------------
   const handleAnalyze = async () => {
     if (!clientId) return;
     setLoading(true);
@@ -273,16 +307,21 @@ function App() {
 
     try {
       const res = await axios.get(`http://127.0.0.1:8000/predict_all/${clientId}`);
-      const d   = res.data;
+      const d = res.data;
 
       if (d.error) {
-        setError("Client ID introuvable.");
+        setError("Client ID not found.");
       } else {
+        const cid = d.client_id ?? d.card?.client_id;
         setData(d.card);
         setClients((prev) => {
-          const entry = { client_id: d.client_id, models: d.models,
-                          final_risk: d.final_risk, avg_score: d.avg_score };
-          const idx = prev.findIndex((c) => c.client_id === d.client_id);
+          const entry = {
+            client_id: cid,
+            models: d.models,
+            final_risk: d.final_risk,
+            avg_score: d.avg_score,
+          };
+          const idx = prev.findIndex((c) => c.client_id === cid);
           if (idx >= 0) {
             const copy = [...prev];
             copy[idx] = entry;
@@ -292,7 +331,7 @@ function App() {
         });
       }
     } catch {
-      setError("Erreur lors de la récupération des données.");
+      setError("Error while fetching data.");
     }
 
     setLoading(false);
@@ -302,25 +341,36 @@ function App() {
     if (e.key === "Enter") handleAnalyze();
   };
 
-  // -------------------------------------------------------------------------
   const SORT_ORDER = { high: 2, medium: 1, low: 0, unknown: -1 };
+  const activeSortedModel = sortBy !== "final" ? sortBy : null;
+  const visibleModelKeys = filterModel === "all" ? MODEL_KEYS : [filterModel];
+  const searchTrim = searchQ.trim();
 
   const displayed = clients
     .filter((c) => {
+      if (searchTrim && !String(c.client_id).includes(searchTrim)) return false;
       if (filterRisk !== "all" && c.final_risk !== filterRisk) return false;
-      if (searchQ && !String(c.client_id).includes(searchQ.trim())) return false;
       return true;
     })
     .sort((a, b) => {
       if (sortBy === "final") {
-        return SORT_ORDER[b.final_risk] - SORT_ORDER[a.final_risk];
+        const d = SORT_ORDER[b.final_risk] - SORT_ORDER[a.final_risk];
+        if (d !== 0) return d;
+      } else {
+        const sa = a.models[sortBy]?.score ?? -1;
+        const sb = b.models[sortBy]?.score ?? -1;
+        if (sb !== sa) return sb - sa;
       }
-      const sa = a.models[sortBy]?.score ?? -1;
-      const sb = b.models[sortBy]?.score ?? -1;
-      return sb - sa;
+      return Number(b.client_id) - Number(a.client_id);
     });
 
-  // -------------------------------------------------------------------------
+  const handleSortChange = (nextSort) => {
+    setSortBy(nextSort);
+    if (nextSort !== "final") {
+      setFilterModel(nextSort);
+    }
+  };
+
   const openDetails = (client) => {
     setSelected(client);
     setShapModel(null);
@@ -335,41 +385,36 @@ function App() {
 
   const closeShap = () => setShapModel(null);
 
-  // -------------------------------------------------------------------------
   return (
     <div className="container">
       <div className={`wrapper ${clients.length > 0 ? "wide" : data ? "card" : ""}`}>
-
-        {/* Header */}
         <div className="header">
           <h1>Credit Risk</h1>
-          <p>Analyse décisionnelle par Machine Learning</p>
+          <p>Machine learning decision support</p>
         </div>
 
-        {/* Search bar */}
         <div className="search">
           <input
             type="number"
-            placeholder="Entrer un Client ID"
+            placeholder="Enter a Client ID"
             value={clientId}
             onChange={(e) => setClientId(e.target.value)}
             onKeyDown={handleKeyDown}
           />
           <button onClick={handleAnalyze} disabled={loading}>
-            {loading ? "Analyse…" : "Analyser"}
+            {loading ? "Analyzing..." : "Analyze"}
           </button>
         </div>
 
         {error && <div className="error-message">{error}</div>}
 
-        {/* ── Original Logistic Regression result card ── */}
         {data && (
           <div className="result">
-            <div className={`decision ${data.solvable ? "approved" : "rejected"}`}>
-              {data.solvable ? "Approuvé" : "Refusé"}
+            <div className={`decision ${data.approvable ? "approved" : "rejected"}`}>
+              {data.approvable ? "Approved" : "Rejected"}
             </div>
 
-            <div className="score-label">Score de risque — Régression Logistique</div>
+            <div className="score-label">Risk score — Main score</div>
             <div className="score-value">{data.score_percent}%</div>
 
             <div className="bar-container">
@@ -378,115 +423,154 @@ function App() {
 
             <div className="explanation">
               <div className="explanation-block">
-                <div className="explanation-title">Principaux facteurs de risque</div>
+                <div className="explanation-title">Main risk factors</div>
                 <ul>
-                  {data.facteurs_risque?.map((f, i) => <li key={i}>{f}</li>)}
+                  {data.risk_factors?.map((f, i) => (
+                    <li key={i}>{f}</li>
+                  ))}
                 </ul>
               </div>
               <div className="explanation-block">
-                <div className="explanation-title">Facteurs protecteurs</div>
+                <div className="explanation-title">Protective factors</div>
                 <ul>
-                  {data.facteurs_protecteurs?.map((f, i) => <li key={i}>{f}</li>)}
+                  {data.protective_factors?.map((f, i) => (
+                    <li key={i}>{f}</li>
+                  ))}
                 </ul>
               </div>
             </div>
 
-            {!data.solvable && (
+            {!data.approvable && (
               <div className="suggestions">
-                <div className="explanation-title">
-                  Pour améliorer vos chances d'approbation :
-                </div>
+                <div className="explanation-title">To improve approval chances:</div>
                 <ul>
-                  {data.recommandations?.map((s, i) => <li key={i}>{s}</li>)}
+                  {data.recommendations?.map((s, i) => (
+                    <li key={i}>{s}</li>
+                  ))}
                 </ul>
               </div>
             )}
           </div>
         )}
 
-        {/* ── Multi-model table (addition) ── */}
         {clients.length > 0 && <div className="section-divider" />}
 
-        {/* Filters + table */}
         {clients.length > 0 && (
           <>
-            {/* Filter bar */}
-            <div className="filters-row">
-              <div className="filter-group">
-                <span className="filter-label">Risque :</span>
-                {[
-                  ["all",    "Tous"],
-                  ["high",   "🔴 Élevé"],
-                  ["medium", "🟠 Moyen"],
-                  ["low",    "🟢 Faible"],
-                ].map(([val, label]) => (
-                  <button
-                    key={val}
-                    className={`filter-btn filter-${val} ${filterRisk === val ? "active" : ""}`}
-                    onClick={() => setFilterRisk(val)}
-                    title={`Afficher uniquement les clients à risque ${label.replace(/[🔴🟠🟢]/g, "").trim().toLowerCase()}`}
-                  >
-                    {label}
-                  </button>
-                ))}
+            <div className="filters-panel">
+              <div className="filters-row">
+                <div className="filter-group">
+                  <span className="filter-label">Risk:</span>
+                  {[
+                    ["all", "All"],
+                    ["high", "High"],
+                    ["medium", "Medium"],
+                    ["low", "Low"],
+                  ].map(([val, label]) => (
+                    <button
+                      key={val}
+                      className={`filter-btn filter-${val} ${filterRisk === val ? "active" : ""}`}
+                      onClick={() => setFilterRisk(val)}
+                      title={`Show only ${label.toLowerCase()} risk clients`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="filter-group">
+                  <span className="filter-label">Model:</span>
+                  {[["all", "All"], ...MODEL_KEYS.map((k) => [k, MODEL_LABELS[k]])].map(
+                    ([val, label]) => (
+                      <button
+                        key={val}
+                        className={`filter-btn ${filterModel === val ? "active" : ""}`}
+                        onClick={() => setFilterModel(val)}
+                        title={val === "all" ? "Show all models" : `Show only ${label}`}
+                      >
+                        {label}
+                      </button>
+                    )
+                  )}
+                </div>
+
+                <div className="filter-group">
+                  <span className="filter-label">Sort:</span>
+                  {[["final", SORT_LABELS.final], ...MODEL_KEYS.map((k) => [k, SORT_LABELS[k]])].map(
+                    ([val, label]) => (
+                      <button
+                        key={val}
+                        className={`filter-btn ${sortBy === val ? "active" : ""}`}
+                        onClick={() => handleSortChange(val)}
+                        title={
+                          val === "final"
+                            ? "Sort by overall risk level (highest to lowest)"
+                            : `Sort by ${MODEL_LABELS[val]} risk percentage (highest to lowest)`
+                        }
+                      >
+                        {label}
+                      </button>
+                    )
+                  )}
+                </div>
+
+                <div className="filter-search">
+                  <input
+                    type="text"
+                    placeholder="Search analyzed ID..."
+                    value={searchQ}
+                    onChange={(e) => setSearchQ(e.target.value)}
+                    title="Filter rows whose ID contains this value"
+                  />
+                </div>
               </div>
 
-              <div className="filter-group">
-                <span className="filter-label">Trier :</span>
-                {[["final", "Risque final"], ...MODEL_KEYS.map(k => [k, MODEL_LABELS[k]])].map(([val, label]) => (
-                  <button
-                    key={val}
-                    className={`filter-btn ${sortBy === val ? "active" : ""}`}
-                    onClick={() => setSortBy(val)}
-                    title={`Trier par ${label}`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-
-              <div className="filter-search">
-                <input
-                  type="text"
-                  placeholder="🔍 Filtrer par ID…"
-                  value={searchQ}
-                  onChange={(e) => setSearchQ(e.target.value)}
-                />
-              </div>
+              <p className="filters-hint">
+                <strong>Risk</strong> and <strong>ID</strong> can be combined. <strong>Sort</strong>{" "}
+                orders rows and automatically highlights the selected model column.{" "}
+                <strong>Model</strong> changes visible columns manually.
+              </p>
             </div>
 
-            {/* Clients table */}
             <div className="table-wrap">
               <table className="clients-table">
                 <thead>
                   <tr>
                     <th>Client ID</th>
-                    {MODEL_KEYS.map(k => <th key={k}>{MODEL_LABELS[k]}</th>)}
-                    <th>Score moy.</th>
-                    <th>Risque Final</th>
+                    {visibleModelKeys.map((k) => (
+                      <th key={k} className={activeSortedModel === k ? "sorted-col-header" : ""}>
+                        {MODEL_LABELS[k]}
+                        {activeSortedModel === k ? " ↓" : ""}
+                      </th>
+                    ))}
+                    <th>Avg. score</th>
+                    <th>Final risk</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {displayed.length === 0 ? (
                     <tr>
-                      <td colSpan={13} className="table-empty">
-                        Aucun client ne correspond aux filtres sélectionnés.
+                      <td colSpan={1 + visibleModelKeys.length + 3} className="table-empty">
+                        {searchTrim && filterRisk !== "all"
+                          ? "No client matches both this ID and this risk level. Try 'All' for risk or clear the ID field."
+                          : searchTrim
+                          ? "No analyzed client matches this ID."
+                          : filterRisk !== "all"
+                          ? "No client matches the selected risk level. Try 'All' or analyze another client."
+                          : "No client matches the selected filters."}
                       </td>
                     </tr>
                   ) : (
                     displayed.map((c) => (
                       <tr key={c.client_id} className={`row-risk-${c.final_risk}`}>
                         <td className="td-id">#{c.client_id}</td>
-                        {MODEL_KEYS.map((key) => {
+                        {visibleModelKeys.map((key) => {
                           const m = c.models[key];
                           return (
-                            <td key={key}>
+                            <td key={key} className={activeSortedModel === key ? "sorted-col-cell" : ""}>
                               {m?.score != null ? (
-                                <span
-                                  className="score-pill"
-                                  style={{ color: RISK_COLORS[m.risk] }}
-                                >
+                                <span className="score-pill" style={{ color: RISK_COLORS[m.risk] }}>
                                   {m.score}%
                                 </span>
                               ) : (
@@ -496,9 +580,7 @@ function App() {
                           );
                         })}
                         <td>
-                          <span className="score-pill" style={{
-                            color: RISK_COLORS[c.final_risk]
-                          }}>
+                          <span className="score-pill" style={{ color: RISK_COLORS[c.final_risk] }}>
                             {c.avg_score != null ? `${c.avg_score}%` : "—"}
                           </span>
                         </td>
@@ -509,9 +591,9 @@ function App() {
                           <button
                             className="btn-details"
                             onClick={() => openDetails(c)}
-                            title="Voir les détails de prédiction et les explications SHAP"
+                            title="View prediction details and SHAP explanations"
                           >
-                            🔍 Voir détails
+                            View details
                           </button>
                         </td>
                       </tr>
@@ -522,29 +604,27 @@ function App() {
             </div>
 
             <div className="table-footer">
-              {displayed.length} client{displayed.length !== 1 ? "s" : ""} affiché{displayed.length !== 1 ? "s" : ""}
-              {filterRisk !== "all" || searchQ ? ` (filtrés sur ${clients.length})` : ""}
+              <div className="table-footer-line">
+                {displayed.length} client{displayed.length !== 1 ? "s" : ""} shown out of {clients.length}
+                {filterRisk !== "all" && ` · Risk: ${RISK_LABELS[filterRisk]}`}
+                {searchTrim && ` · ID contains "${searchTrim}"`}
+              </div>
+              <div className="table-footer-line table-footer-meta">
+                Active sort: {SORT_LABELS[sortBy]}
+                {sortBy === "final" ? " (high → low)" : " (descending % score)"}
+                {clients.length === 1 && " — with only one row, the order does not visibly change."}
+              </div>
             </div>
           </>
         )}
       </div>
 
-      {/* Details Modal */}
       {selected && !shapModel && (
-        <DetailsModal
-          client={selected}
-          onClose={closeDetails}
-          onOpenShap={openShap}
-        />
+        <DetailsModal client={selected} onClose={closeDetails} onOpenShap={openShap} />
       )}
 
-      {/* SHAP Modal */}
       {selected && shapModel && (
-        <ShapModal
-          client={selected}
-          modelKey={shapModel}
-          onClose={closeShap}
-        />
+        <ShapModal client={selected} modelKey={shapModel} onClose={closeShap} />
       )}
     </div>
   );
