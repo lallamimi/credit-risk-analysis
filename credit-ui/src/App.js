@@ -310,7 +310,7 @@ function App() {
       const d = res.data;
 
       if (d.error) {
-        setError("Client ID not found.");
+        setError(d.error);
       } else {
         const cid = d.client_id ?? d.card?.client_id;
         setData(d.card);
@@ -330,8 +330,12 @@ function App() {
           return [entry, ...prev];
         });
       }
-    } catch {
-      setError("Error while fetching data.");
+    } catch (err) {
+      const msg =
+        err?.response?.data?.detail ||
+        err?.response?.data?.error ||
+        "Error while fetching data.";
+      setError(msg);
     }
 
     setLoading(false);

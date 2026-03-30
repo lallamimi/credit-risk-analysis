@@ -137,6 +137,8 @@ def get_contributions_fallback(pipeline, X_client):
 # RISK LEVEL
 # --------------------------------------------------
 def risk_level(score):
+    if score is None:
+        return "unknown"
     if score > 60:
         return "high"
     elif score > 30:
@@ -250,7 +252,7 @@ def get_shap(client_id: int, model_name: str):
         return {"error": "Client not found", "shap": []}
 
     try:
-        X = client.drop(columns=["loan_status"])
+        X = client.drop(columns=["loan_status", "client_id"], errors="ignore")
         shap_rows = get_shap_values_for_model(model, X)
         return {
             "client_id": client_id,
@@ -270,21 +272,36 @@ def predict_all(client_id: int):
     if client.empty:
         return {"error": "Client not found"}
 
-    X = client.drop(columns=["loan_status"])
+    X = client.drop(columns=["loan_status", "client_id"], errors="ignore")
     models = get_models()
 
     with ThreadPoolExecutor() as executor:
         results = dict(executor.map(lambda item: run_model(*item, X), models.items()))
 
     valid_scores = [m["score"] for m in results.values() if m["score"] is not None]
-    avg_score = sum(valid_scores) / len(valid_scores) if valid_scores else 50
+    if not valid_scores:
+        return {
+            "error": (
+                "No prediction model is available. "
+                "Please generate or add at least one *.pkl model file."
+            )
+        }
+
+    avg_score = sum(valid_scores) / len(valid_scores)
 
     ref = results.get("xgboost", {})
+    if ref.get("score") is None:
+        ref = next(
+            (model_out for model_out in results.values() if model_out.get("score") is not None),
+            {},
+        )
+
+    main_score = ref.get("score")
 
     card = {
         "client_id": client_id,
-        "score_percent": ref.get("score"),
-        "approvable": ref.get("score", 0) < 50,
+        "score_percent": main_score,
+        "approvable": bool(main_score is not None and main_score < 50),
         "risk_factors": ref.get("risk_factors", []),
         "protective_factors": ref.get("protective_factors", []),
         "recommendations": ref.get("recommendations", [])
@@ -296,3 +313,4 @@ def predict_all(client_id: int):
         "avg_score": round(avg_score, 2),
         "final_risk": risk_level(avg_score)
     }
+
